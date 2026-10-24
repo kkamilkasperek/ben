@@ -188,8 +188,6 @@ class TMClient:
             self.dummy_hand_str = await self.receive_dummy()
 
         await self.play(auction, opening_lead52, features, send_card_info)
-
-        await self.receive_line()
         
 
     async def connect(self, host, port, send_info, send_card_info, config):
@@ -792,9 +790,18 @@ class TMClient:
 
         assert bid_resp_parts[0] == SEATS[player_i], f"Received {bid_resp} - was expecting bid for {SEATS[player_i]} - restart client"
 
-        # This is to prevent the client failing, when receiving an alert
+        # Accept explanations appended directly to a bid token.
+        bid_match = None
         if (bid_resp_parts[1].upper() not in ['PASSES', 'DOUBLES', 'REDOUBLES']):
-            bid = bid_resp_parts[2].rstrip('.').upper().replace('NT', 'N')
+            bid_match = re.match(
+                rf'^{re.escape(SEATS[player_i])}\s+bids\s+'
+                r'([1-7](?:NT|[CDHS]))',
+                bid_resp,
+                re.IGNORECASE
+            )
+            if bid_match is None:
+                raise ValueError(f"Could not parse bid from response: {bid_resp}")
+            bid = bid_match.group(1).upper().replace('NT', 'N')
         else:
             bid = bid_resp_parts[1].upper()
 
@@ -812,6 +819,11 @@ class TMClient:
             index = bid_resp_parts.index("Infos.")
             # Get all parts after "Infos."
             explanation = ' '.join(bid_resp_parts[index + 1:])
+
+        if bid_match is not None and explanation is None:
+            suffix = bid_resp[bid_match.end():].strip()
+            if suffix:
+                explanation = suffix
 
         return {
             'PASSES': 'PASS',
