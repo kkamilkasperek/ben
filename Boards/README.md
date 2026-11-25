@@ -61,10 +61,33 @@ Without the second argument it uses `DatumScores.pkl` in the current folder; wit
 
 The boards that survive the filter end up in `<filename>-OK_boards.pbn`, and the rejected boards are written to companion files - `-disaster.pbn`, `-duplicates.pbn`, `-db_making.pbn`, `-db_not_making.pbn` and `-missing-DD.pbn`. It is the `-OK_boards.pbn` file that is used for training.
 
+Only `-disaster` (more than 2000 from par) depends on the par score. Until 2026-11-20 the datum pickle stored par under the DEAL, so a deal that recurs at another vulnerability was judged against its twin's par. The pickle now holds only the double-dummy tricks, and Split_PBN and `bid_with_epbot.py` compute par for each board at its own vulnerability. Re-judged with the correct par, the existing splits (the ten `*-8730`, the 8742/8744 sets, MicroBridge and PidginV2) wrongly dropped 0-3 boards per set (24 in all) and wrongly kept 0-13 real disasters per set (85 in all), out of 1.15-1.25M boards each: about one board in 100,000, too few to matter for the models already trained. New splits are correct.
+
 `Split_PBN.exe` is not part of this repository - it is built from
 [Bridge-Robot-Utilities](https://github.com/ThorvaldAagaard/Bridge-Robot-Utilities) (`src/Split_PBN.py`,
 with a PyInstaller spec in `Install/`). The same repository also provides `MergePBNFiles` and
 `ExtractDatumScore` used elsewhere in this document.
+
+### Boards bid by another engine (Pidgin)
+
+Split_PBN needs the result tags that BBA and `bid_with_epbot.py` write on every board: `[Declarer]`, `[Contract]`, `[Result]` (double-dummy tricks), `[Score]` and the datum score. An engine that only writes the auctions needs one more step, `UpdateScore` from [Bridge-Robot-Utilities](https://github.com/ThorvaldAagaard/Bridge-Robot-Utilities), which adds those tags from the datum file.
+
+For Pidgin (github.com/hsperr/pidgin), from its repository root, bid every board of a deals file with the network (about 1,200 boards a second on a CPU):
+
+```
+python scripts/bid_pbn.py D:\GitHub\ben\BBA\Boards\Deals-2026-10-22.pbn D:\GitHub\ben\BBA\Boards\Deals-2026-10-22.PidginV2.pbn --model PidginV2
+```
+
+Then, from `BBA\Boards`:
+
+```
+UpdateScore.exe Deals-2026-10-22.PidginV2.pbn DatumScores-DD.pkl PidginV2.pbn
+Split_PBN.exe PidginV2.pbn DatumScores-DD.pkl
+```
+
+`UpdateScore` is new: until Bridge-Robot-Utilities' executables are rebuilt, run it from source with `python <Bridge-Robot-Utilities>\src\UpdateScore.py ...`.
+
+On the 1,262,483 boards of `Deals-2026-10-22.pbn`, Pidgin V2 kept 1,235,122 boards. It lost 26,673 to doubled-and-making contracts and 624 to disasters, against 15,147 and 820 for EPBot with the BEN-21GF card on the same deals: Pidgin doubles about twice as often (128,243 doubled contracts against 67,347), and about 79% of its doubles beat the contract.
 
 It will print the bad deals like this:
 

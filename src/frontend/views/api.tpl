@@ -13,6 +13,7 @@
     <link rel="stylesheet" href="/app/style.css">
     <link rel="stylesheet" href="/app/viz.css">
     <script src="/app/samplesTable.js"></script>
+    <script src="/app/wsurl.js"></script>
 
     <!-- Include jQuery and jQuery UI -->
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
@@ -21,7 +22,7 @@
 
 <body>
     <div>
-        <h1>API for BEN. Version 0.9.0.2</h1>
+        <h1>API for BEN. Version 0.9.0.5</h1>
     </div>
     <div id="loader"></div> 
     <div id="dealdiv">
@@ -632,7 +633,7 @@
         let bids = 0;
         function displayBid(data) {
             let alerted = "";
-            if (data.alert == "True") {
+            if (data.alert === true || data.alert == "True") {
                 alerted = "*";
             }
             let explanation = "";
@@ -945,7 +946,7 @@
                 port = 8088
             }
 
-            var url = `${protocol}//${hostname}:${port}/${action}?user=${user}&dealer=${dealer}&seat=${seat}&vul=${vul}&ctx=${bidding}&hand=${hand}&tournament=${matchpoint}&explain=${explain}&format=${format}&details=${details}`;
+            var url = `${benApiUrl(port)}/${action}?user=${user}&dealer=${dealer}&seat=${seat}&vul=${vul}&ctx=${bidding}&hand=${hand}&tournament=${matchpoint}&explain=${explain}&format=${format}&details=${details}`;
             if (action == "play" || action == "claim")
                 url += `&dummy=${dummy}&played=${played}`;
             if (action == "contract")
@@ -982,7 +983,7 @@
                 }
 
                 if (action == 'bid') {
-                    if (data.alert == "True") {
+                    if (data.alert === true || data.alert == "True") {
                         document.getElementById('result').innerText = `BEN Suggest: ${data.bid}*`;
                     } else {
                         document.getElementById('result').innerText = `BEN Suggest: ${data.bid}`;

@@ -21,14 +21,41 @@ behind a reverse proxy, you must add your hostname(s):
 
 ```bash
 # Allow specific hosts (comma-separated)
-python gameapi.py --allowed-hosts 'localhost,127.0.0.1,ben'
+python gameapi.py --allowed-hosts "localhost,127.0.0.1,ben"
 
 # Allow all hosts (useful in Docker / trusted networks)
-python gameapi.py --allowed-hosts '*'
+python gameapi.py --allowed-hosts "*"
 ```
+
+Use double quotes: they work in bash, Windows `cmd` and PowerShell alike. Windows `cmd`
+does not remove single quotes, so older versions of gameapi saw `'*'` as a host name and
+rejected every request with 444; gameapi now strips stray quotes itself.
 
 > **Tip:** If you get HTTP 444 "No Response" on every request, this is almost certainly
 > the cause. Check the logs for a "Rejected request from host" warning.
+
+### Behind a Reverse Proxy
+
+The web pages can reach the API through a reverse proxy or tunnel on the same origin as
+the site, as `https://<host>/gameapi/8085/bid`; gameapi drops the `/gameapi/<port>` prefix
+itself. Route that path to the API port unchanged.
+
+Rate limits are kept per visitor address. Behind a proxy every request arrives from the
+proxy's address, so name the proxy with `--trusted-proxies`; gameapi then takes the visitor
+from `CF-Connecting-IP` (Cloudflare) or `X-Forwarded-For`:
+
+```bash
+# Proxy or tunnel on the same machine
+python gameapi.py --allowed-hosts "*" --trusted-proxies "127.0.0.1,::1"
+
+# Proxy in another container on a Docker network
+python gameapi.py --allowed-hosts "*" --trusted-proxies "172.16.0.0/12"
+```
+
+The headers are believed only from those addresses. Without `--trusted-proxies` (the
+default) they are ignored, because anyone reaching the port directly could send
+`X-Forwarded-For: 127.0.0.1` and skip the limits. Name only the proxy, not a network the
+visitors themselves can come from.
 
 ## Common Parameters
 
@@ -39,7 +66,7 @@ These parameters are used across multiple endpoints:
 | `hand` | Hand in PBN format (dots or underscores as separators) | `AK97543.K.T3.AK7` or `AK97543_K_T3_AK7` |
 | `seat` | Player position | `N`, `E`, `S`, `W` |
 | `dealer` | Dealer position | `N`, `E`, `S`, `W` |
-| `vul` | Vulnerability: `@V` = We vul, `@V` = They vul | `@v@V` (both vul), empty (none) |
+| `vul` | The table's vulnerability, the same whichever seat asks: `None` (or `-` or empty), `NS` (or `N-S`), `EW` (or `E-W`), `All` (or `Both`). Case does not matter. Any other value is answered 400 | `NS` |
 | `ctx` | Bidding context as concatenated 2-char bids | `1C--1S` = 1C-Pass-1S |
 | `dummy` | Dummy's hand in PBN format | `QJ87.A95.K63.T42` |
 | `played` | Cards played as concatenated 2-char cards | `SJSQSKSA` |
@@ -85,7 +112,7 @@ Returns the systems and cardings a request may name, and what the server plays w
   "name": "GIB as on BBO",
   "playsSystems": ["21GF-GIB", "21GF", "SAYC"],
   "readsSystems": ["21GF-GIB", "21GF", "SAYC", "BEN:LIA-21GF", "BEN:QPLUS-21GF", "BEN:WBRIDGE5-SAYC",
-                   "BEN:BLUECHIP-SAYC", "BEN:SHARK-SAYC", "BEN:ROBO-SAYC"],
+                   "BEN:BLUECHIP-SAYC", "BEN:SHARK-SAYC", "BEN:ROBO-SAYC", "BEN:MBRIDGE"],
   "cardings": ["21GF-GIB", "21GF", "SAYC", "BEN:LIA-21GF", "...", "STANDARD", "STANDARD-35"],
   "defaults": {"ourSystem": "21GF-GIB", "theirSystem": "21GF-GIB", "ourCarding": "STANDARD-35", "theirCarding": "21GF-GIB"}
 }
@@ -104,7 +131,7 @@ Returns the recommended bid for a given hand and auction state.
 | `hand` | Yes | Your hand in PBN format |
 | `seat` | Yes | Your position (N/E/S/W) |
 | `dealer` | Yes | Dealer position (N/E/S/W) |
-| `vul` | Yes | Vulnerability string |
+| `vul` | Yes | Table vulnerability: `None`, `NS`, `EW` or `All` |
 | `ctx` | Yes | Current auction (can be empty for opening) |
 | `details` | No | Include candidates/samples if `true` |
 | `matchtype` | No | `MP` for matchpoint scoring (`tournament` is accepted as an older name) |
@@ -170,26 +197,31 @@ Returns the recommended opening lead after the auction.
 | `hand` | Yes | Your hand in PBN format |
 | `seat` | Yes | Your position (N/E/S/W) |
 | `dealer` | Yes | Dealer position |
-| `vul` | Yes | Vulnerability string |
+| `vul` | Yes | Table vulnerability: `None`, `NS`, `EW` or `All` |
 | `ctx` | Yes | Complete auction |
 | `details` | No | Include candidates/samples if `true` |
 
 **Example Request:**
 ```
-GET /lead?hand=KJ53.KJ7.AT92.K5&seat=W&dealer=N&vul=@v&ctx=1N--3N------
+GET /lead?hand=KJ53.KJ7.AT92.K5&seat=E&dealer=N&vul=NS&ctx=1N--3N------&details=true
 ```
+
+North opened 1NT and declares 3NT, so East is on lead. Without `details=true` only
+`card`, `who` and `quality` are returned.
 
 **Response:**
 ```json
 {
-  "card": "CA",
-  "who": "Simulation (MP)",
-  "quality": "Good",
-  "hcp": [7.7, 2.5, 12.4],
-  "shape": [0.8, 4.3, 4.2, 3.7, ...],
+  "card": "S3",
+  "who": "Simulation (IMP)",
+  "quality": "0.8635",
+  "hcp": [8.8, 0.5, 15.4],
+  "shape": [2.6, 2.9, 3.3, 4.2, 3.2, 3.7, 2.9, 3.2, 3.2, 3.4, 3.0, 3.4],
   "candidates": [
-    {"card": "CA", "insta_score": 0.325, "expected_tricks_sd": 5.28, "p_make_contract": 1.0, "expected_score_sd": 236},
-    {"card": "CK", "insta_score": 0.276, "expected_tricks_sd": 5.28, "p_make_contract": 1.0, "expected_score_sd": 236}
+    {"card": "Sx", "insta_score": 0.415, "p_make_contract": 0.23, "expected_score_imp": 0.57, "msg": ""},
+    {"card": "DT", "insta_score": 0.372, "p_make_contract": 0.22, "expected_score_imp": 0.19, "msg": ""},
+    {"card": "Dx", "insta_score": 0.08, "p_make_contract": 0.2, "expected_score_imp": -0.13, "msg": ""},
+    {"card": "Hx", "insta_score": 0.054, "p_make_contract": 0.18, "expected_score_imp": -0.64, "msg": ""}
   ],
   "samples": [...]
 }
@@ -209,7 +241,7 @@ Returns the recommended card to play during the card play phase.
 | `dummy` | Yes | Dummy's hand in PBN format |
 | `seat` | Yes | Your position (N/E/S/W) |
 | `dealer` | Yes | Dealer position |
-| `vul` | Yes | Vulnerability string |
+| `vul` | Yes | Table vulnerability: `None`, `NS`, `EW` or `All` |
 | `ctx` | Yes | Complete auction |
 | `played` | Yes | Cards played so far (concatenated) |
 | `details` | No | Include candidates/samples if `true` |
@@ -258,7 +290,7 @@ Verifies whether a claim of a certain number of tricks is valid.
 | `dummy` | Yes | Dummy's hand in PBN format |
 | `seat` | Yes | Your position (N/E/S/W) |
 | `dealer` | Yes | Dealer position |
-| `vul` | Yes | Vulnerability string |
+| `vul` | Yes | Table vulnerability: `None`, `NS`, `EW` or `All` |
 | `ctx` | Yes | Complete auction |
 | `played` | Yes | Cards played so far |
 
@@ -288,7 +320,7 @@ Plays a complete board with BEN handling all 4 positions for bidding and card pl
 | `deal` | Yes | PBN deal string (4 hands space-separated) |
 | `board` | No | Board number 1-16 for dealer/vul (default: 1) |
 | `dealer` | No | Override dealer (N/E/S/W) |
-| `vul` | No | Override vulnerability (None/NS/EW/Both) |
+| `vul` | No | Override vulnerability: `None`, `NS`, `EW` or `All` (`Both` also accepted) |
 
 **Example Request:**
 ```
@@ -325,7 +357,7 @@ Predicts the likely contract given two hands (for partnership simulation).
 | `hand` | Yes | First hand in PBN format |
 | `dummy` | Yes | Second hand in PBN format |
 | `seat` | Yes | Position of first hand |
-| `vul` | Yes | Vulnerability string |
+| `vul` | Yes | Table vulnerability: `None`, `NS`, `EW` or `All` |
 
 **Response:**
 ```json
@@ -439,7 +471,7 @@ print(r.json()["bid"])  # "2C" (strong)
 
 # East passes
 r = requests.get(f"{BASE}/bid", params={
-    "hand": "432.432.432.4322",
+    "hand": "432.432.432.6543",
     "seat": "E", "dealer": "N", "vul": "", "ctx": "2C"
 })
 print(r.json()["bid"])  # "PASS"
@@ -450,12 +482,12 @@ print(r.json()["bid"])  # "PASS"
 ```python
 r = requests.get(f"{BASE}/lead", params={
     "hand": "KJ53.KJ7.AT92.K5",
-    "seat": "W",
+    "seat": "E",
     "dealer": "N",
-    "vul": "@v",
+    "vul": "NS",
     "ctx": "2C--2D--2N--3N------"
 })
-print(r.json()["card"])  # e.g., "DA"
+print(r.json()["card"])  # e.g., "S3"
 ```
 
 ---

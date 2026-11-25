@@ -46,10 +46,14 @@ responses.
 Pass the hostname(s) you actually use:
 
 ```bash
-python3 gameapi.py --host 0.0.0.0 --allowed-hosts 'localhost,127.0.0.1,ben,bridge.example.com'
+python3 gameapi.py --host 0.0.0.0 --allowed-hosts "localhost,127.0.0.1,ben,bridge.example.com"
 # or, for development only:
-python3 gameapi.py --host 0.0.0.0 --allowed-hosts '*'
+python3 gameapi.py --host 0.0.0.0 --allowed-hosts "*"
 ```
+
+Use double quotes: they work in bash, Windows `cmd` and PowerShell alike (`cmd`
+does not remove single quotes; gameapi now strips stray quotes, older versions
+did not and rejected everything).
 
 ### 1.3 CORS
 
@@ -136,11 +140,11 @@ async function getBid({hand, seat, dealer, vul, auction}) {
   url.searchParams.set('ctx', ctx);
   url.searchParams.set('details', 'true');   // include explanation + alert
   const r = await fetch(url);
-  return r.json();   // { bid: "1S", explanation: "...", alert: "False", candidates: [...] }
+  return r.json();   // { bid: "1S", explanation: "...", alert: false, candidates: [...] }
 }
 ```
 
-The response includes `bid`, `explanation`, `alert` (string `"True"`/`"False"`),
+The response includes `bid`, `explanation`, `alert` (a JSON boolean; it was the text `"True"`/`"False"` before November 2026),
 and (with `details=true`) `candidates`, `samples`, `hcp`, `shape`. Always
 include `explanation` in the UI for human review of the robot's calls.
 
@@ -302,7 +306,7 @@ on the frontend. BEN only answers "given this state, what do I do next?".
 ## 6. Operational checklist
 
 - **Container is up but every call hangs / returns nothing?** Almost always a
-  `Host` header rejection. Restart with `--allowed-hosts '*'` to confirm,
+  `Host` header rejection. Restart with `--allowed-hosts "*"` to confirm,
   then narrow it down. Look for `Rejected request from host '...'` in
   `/app/logs/gameapi-*.log`.
 - **CORS preflight fails from the browser?** `flask_cors.CORS(app)` allows
@@ -313,7 +317,12 @@ on the frontend. BEN only answers "given this state, what do I do next?".
   `/autoplay` once at deploy time to warm up.
 - **`/play` returns "No contract found".** `ctx` was empty or the auction
   hasn't ended in a contract — check that you append the final three passes.
-- **`/play` returns "Called as dummy or with wrong dealer / seat".** You sent
+- **A request the server cannot use is answered `400` with an `error` text**,
+  never with a guessed call or card: a missing `hand`, `seat`, `dealer` or
+  `dummy`, a hand without 13 cards, an unknown `vul`, the wrong seat on lead.
+- **`/play` with all 52 cards in `played`, or with a passed-out `ctx` and
+  nothing played, is answered `200` with `"boardOver": true`** and no card.
+- **`/play` returns "Called as dummy or with wrong dealer / seat" (`400`).** You sent
   the dummy seat as `seat`. Send declarer's seat with declarer's hand instead;
   BEN treats dummy's plays as decisions made by the declarer.
 - **Card encoding mismatches.** `played` uses `T` for ten and is in
