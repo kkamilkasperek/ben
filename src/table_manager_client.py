@@ -755,7 +755,11 @@ class TMClient:
         if card_resp.lower() == "start of board":
             raise RestartLogicException(card_resp)
 
-        assert card_resp_parts[0] == SEATS[player_i], f"Received {card_resp_parts} - was expecting card for {SEATS[player_i]}"
+        expected_seat = SEATS[player_i]
+        assert card_resp_parts[0].casefold() == expected_seat.casefold(), (
+            f"Received {card_resp_parts} - was expecting card for "
+            f"{expected_seat}"
+        )
         if player_i % 2 == self.player_i:
             who = self.partner
         else:
@@ -788,7 +792,11 @@ class TMClient:
         if bid_resp.lower() == "start of board":
             raise RestartLogicException(bid_resp)
 
-        assert bid_resp_parts[0] == SEATS[player_i], f"Received {bid_resp} - was expecting bid for {SEATS[player_i]} - restart client"
+        expected_seat = SEATS[player_i]
+        assert bid_resp_parts[0].casefold() == expected_seat.casefold(), (
+            f"Received {bid_resp} - was expecting bid for "
+            f"{expected_seat} - restart client"
+        )
 
         # Accept explanations appended directly to a bid token.
         bid_match = None
